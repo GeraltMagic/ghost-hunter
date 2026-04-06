@@ -56,18 +56,75 @@ const Game = {
     const raw = localStorage.getItem('ghosthunter_save');
     if (raw) {
       try {
-        this.save = JSON.parse(raw);
-        // Merge in any new fields from default save
-        const defaults = getDefaultSave();
-        for (const key of Object.keys(defaults)) {
-          if (!(key in this.save)) this.save[key] = defaults[key];
+        const parsed = JSON.parse(raw);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('Invalid save format');
         }
+        this.save = this.sanitizeSave(parsed);
       } catch {
         this.save = getDefaultSave();
       }
     } else {
       this.save = getDefaultSave();
     }
+  },
+
+  sanitizeSave(parsed) {
+    const defaults = getDefaultSave();
+    const s = {};
+
+    // Clamp numeric fields to safe ranges
+    s.level = this.clampInt(parsed.level, 1, LEVEL_XP.length);
+    s.xp = this.clampInt(parsed.xp, 0, 999999);
+    s.currency = this.clampInt(parsed.currency, 0, 999999);
+    s.health = this.clampInt(parsed.health, 1, 200);
+    s.maxHealth = this.clampInt(parsed.maxHealth, 100, 200);
+    s.sanity = this.clampInt(parsed.sanity, 0, 100);
+    s.huntsCompleted = this.clampInt(parsed.huntsCompleted, 0, 999999);
+    s.ghostsCaptured = this.clampInt(parsed.ghostsCaptured, 0, 999999);
+    s.trainingComplete = parsed.trainingComplete === true;
+
+    // Validate skills — only allow known skill IDs, clamped to valid levels
+    s.skills = {};
+    for (const key of Object.keys(defaults.skills)) {
+      const skill = SKILLS[key];
+      s.skills[key] = skill
+        ? this.clampInt(parsed.skills?.[key], 0, skill.maxLevel)
+        : 0;
+    }
+
+    // Validate equipment — only allow known equipment IDs, boolean values
+    s.equipment = {};
+    for (const key of Object.keys(defaults.equipment)) {
+      s.equipment[key] = parsed.equipment?.[key] === true || defaults.equipment[key] === true;
+    }
+
+    // Validate equipment proficiency — clamped 0-1
+    s.equipmentProficiency = {};
+    for (const key of Object.keys(defaults.equipmentProficiency)) {
+      const val = Number(parsed.equipmentProficiency?.[key]);
+      s.equipmentProficiency[key] = (Number.isFinite(val) && val >= 0 && val <= 1) ? val : 0;
+    }
+
+    // Validate bestiary — only allow known ghost IDs
+    s.bestiary = {};
+    for (const ghostId of Object.keys(GHOSTS)) {
+      const entry = parsed.bestiary?.[ghostId];
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+        s.bestiary[ghostId] = {
+          seen: entry.seen === true,
+          captured: this.clampInt(entry.captured, 0, 999999),
+        };
+      }
+    }
+
+    return s;
+  },
+
+  clampInt(val, min, max) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, Math.floor(n)));
   },
 
   persistSave() {
