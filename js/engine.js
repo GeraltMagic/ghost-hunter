@@ -26,7 +26,6 @@ const Game = {
   notifications: [],
   lastTime: 0,
   evidenceReadings: {}, // equipment_id -> { active, timer, result }
-  ghostPositions: [],
   flickerTimer: 0,
   ambientSounds: 0,
   captureAttempted: false,
@@ -74,7 +73,7 @@ const Game = {
     const s = {};
 
     // Clamp numeric fields to safe ranges
-    s.level = this.clampInt(parsed.level, 1, LEVEL_XP.length);
+    s.level = this.clampInt(parsed.level, 1, LEVEL_XP.length - 1);
     s.xp = this.clampInt(parsed.xp, 0, 999999);
     s.currency = this.clampInt(parsed.currency, 0, 999999);
     s.health = this.clampInt(parsed.health, 1, 200);
@@ -253,6 +252,7 @@ const Game = {
 
   // --- Investigation Setup ---
   startInvestigation(locationId) {
+    if (this.trainingActive) return; // Prevent corrupting training state
     const loc = LOCATIONS[locationId];
     if (!loc) return;
     if (this.save.level < loc.requiredLevel) {
